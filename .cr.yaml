@@ -1,8 +1,0 @@
-# .cr.yaml
-owner: mtd-labs
-git_repo: helm-charts
-charts_dir: charts
-release_name_template: "{{ .Name }}-{{ .Version }}"
-package_path: .cr-release-packages
-index_path: index.yaml
-pages_branch: gh-pages
