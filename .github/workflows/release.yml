@@ -2,20 +2,18 @@ name: Release Charts
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
-  contents: write 
-
+  contents: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -24,7 +22,47 @@ jobs:
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      # OPTIONAL: auto-add dependency repos from Chart.yaml files
+      - name: Install yq
+        uses: mikefarah/yq@v4.44.3
+
+      - name: Add dependency repos (if any) and build deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          # collect unique repo URLs from all charts' Chart.yaml
+          mapfile -t REPOS < <(find charts -maxdepth 2 -name Chart.yaml -print0 \
+            | xargs -0 -I{} yq -r '.dependencies[]?.repository // empty' {} | sort -u)
+
+          # add each repo with a deterministic name
+          for url in "${REPOS[@]}"; do
+            # skip local file deps and OCI (handled differently); keep if you need OCI login separately
+            if [[ "$url" == file://* ]]; then continue; fi
+            if [[ "$url" == oci://* ]]; then continue; fi
+            name="$(echo "$url" | sed -E 's~https?://~~; s~/~-~g; s/[^A-Za-z0-9_.-]/-/g')"
+            helm repo add "$name" "$url" || true
+          done
+
+          helm repo update || true
+
+          # build (vendor) dependencies for each chart
+          for d in charts/*; do
+            [[ -f "$d/Chart.yaml" ]] || continue
+            echo "Building deps for $d"
+            helm dependency build "$d"
+          done
+
+      # If you use OCI deps, add a login step here, e.g.:
+      # - name: Helm OCI login (example)
+      #   run: |
+      #     echo "$CR_PAT" | helm registry login ghcr.io -u USERNAME --password-stdin
+
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.6.0
         env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
