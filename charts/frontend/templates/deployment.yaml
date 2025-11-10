@@ -1,0 +1,222 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trendex-base-helm.fullname" . }}
+  labels:
+    {{- include "trendex-base-helm.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.minReadySeconds}}
+  minReadySeconds: {{ .Values.minReadySeconds }}
+  {{- end }}
+  {{- if .Values.revisionHistoryLimit}}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  {{- end }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "trendex-base-helm.selectorLabels" . | nindent 6 }}
+  {{- if .Values.strategy }}
+  strategy:
+    {{- toYaml .Values.strategy | nindent 12 }}
+  {{- end }}
+  template:
+    metadata:
+      annotations:
+        configmap: {{ .Values.config | toYaml | sha256sum | trunc 8 }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "trendex-base-helm.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if hasKey .Values "shareProcessNamespace" }}
+      shareProcessNamespace: {{ .Values.shareProcessNamespace }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "trendex-base-helm.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainers }}
+      initContainers:
+      {{-  toYaml .Values.initContainers | nindent 6 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.app.image.repository }}:{{ .Values.app.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          {{- if $.Values.command }}
+          command:
+            {{  toYaml .Values.command | nindent 12 }}
+          {{- end }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.deployment.containerPort | default 80 }}
+              protocol: TCP
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "trendex-base-helm.fullname" . }}
+            - secretRef:
+                name: {{ include "trendex-base-helm.fullname" . }}
+                optional: true
+          {{- if .Values.deployment.PriorityClass }}
+          priorityClassName: {{ .Values.deployment.PriorityClass }}
+          {{- end }}
+          {{- if .Values.deployment.volumes.enabled }}
+          volumeMounts:
+            {{- if .Values.externalsecrets.enabled }}
+            - name: env
+              mountPath: {{ if .Values.externalsecrets.envpath }} {{ .Values.externalsecrets.envpath }}/{{ .Values.externalsecrets.secretkey }} {{ else }} .env {{ end }}
+              subPath: {{ .Values.externalsecrets.secretkey }}
+            {{- end }}
+            {{- with .Values.deployment.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+          {{- end }}
+        {{- if .Values.nginx.enabled }}
+        - name: nginx
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.nginx.image.pullPolicy }}
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            {{- with .Values.nginx.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort | default 80 }}
+              protocol: TCP
+          {{- if .Values.nginx.healthcheck.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.nginx.healthcheck.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.nginx.healthcheck.period }}
+            periodSeconds: {{ .Values.nginx.healthcheck.period }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.nginx.healthcheck.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.nginx.healthcheck.period }}
+            periodSeconds: {{ .Values.nginx.healthcheck.period }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.nginx.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.nginx.exporter.enabled }}
+        - name: nginx-metrics
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.nginx.exporter.image.repository }}:{{ .Values.nginx.exporter.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.nginx.exporter.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: nginx-metrics
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: nginx-metrics
+            periodSeconds: 5
+          startupProbe:
+            failureThreshold: 120
+            periodSeconds: 1
+            httpGet:
+              path: /metrics
+              port: nginx-metrics
+          env:
+            - name: SCRAPE_URI
+              value: http://127.0.0.1:8080/stub_status
+            - name: LISTEN_ADDRESS
+              value: ":9113"
+            - name: TELEMETRY_PATH
+              value: /metrics
+          ports:
+            - name: nginx-metrics
+              containerPort: 9113
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.nginx.exporter.resources | nindent 12 }}
+        {{- end }}
+        {{- if or .Values.cloudsqlProxy.instance1.enabled .Values.cloudsqlProxy.instance2.enabled }}
+        - name: cloud-sql-proxy
+          image: "europe-west1-docker.pkg.dev/uc-next/devops-tools/cloud-sql-proxy:2.15.2"
+          imagePullPolicy: IfNotPresent
+          command: ["/run.sh"]
+          args:
+            {{- if .Values.cloudsqlProxy.instance1.enabled }}
+            - "{{ .Values.cloudsqlProxy.instance1.connetionLink }}"
+            {{- end }}
+            {{- if .Values.cloudsqlProxy.instance2.enabled }}
+            - "{{ .Values.cloudsqlProxy.instance2.connetionLink }}"
+            {{- end }}
+          volumeMounts:
+            - name: cloudsql-instance-credentials
+              mountPath: /secrets/cloudsql
+              readOnly: true
+          resources:
+            {{- toYaml .Values.cloudsqlProxy.resources | nindent 13 }}
+        {{- end }}
+      {{- if .Values.deployment.volumes.enabled }}
+      volumes:
+        {{- if or .Values.cloudsqlProxy.instance1.enabled .Values.cloudsqlProxy.instance2.enabled }}
+        - name: cloudsql-instance-credentials
+          secret:
+            secretName: {{ .Values.cloudsqlProxy.credentialsSecret }}
+        {{- end }}
+        {{- if .Values.nginx.enabled }}
+        - name: nginx-config
+          configMap:
+            name: {{ if .Values.nginx.configName }} {{ .Values.nginx.configName }} {{ else }} {{ .Release.Name }}-nginx-config {{ end }}
+        {{ end }}
+        {{- if .Values.externalsecrets.enabled }}
+        - name: env
+          secret:
+            secretName: {{ if .Values.envSecretName }} {{ .Values.envSecretName }} {{ else }} {{ .Release.Name }}-env {{ end }}
+        {{ end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- tpl (toYaml .) . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
