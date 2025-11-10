@@ -3,6 +3,16 @@ entries:
   backend:
   - apiVersion: v2
     appVersion: 1.3.0
+    created: "2025-11-10T10:54:36.686250953Z"
+    description: Helm chart scaffolding for Backend applications.
+    digest: 55d71ca08bd58adca4d05d1e83ce862f1d9c83b8579b7d8192a67124ea009c2d
+    name: backend
+    type: application
+    urls:
+    - https://github.com/MTD-Labs/helm-charts/releases/download/backend-3.6.32/backend-3.6.32.tgz
+    version: 3.6.32
+  - apiVersion: v2
+    appVersion: 1.3.0
     created: "2025-11-10T10:04:46.589914038Z"
     description: Helm chart scaffolding for Backend applications.
     digest: 4e3c173065f92fb25d9635b9ec9ff7d5dfeb6271ea818f574c2fc669d734d450
@@ -26,6 +36,16 @@ entries:
   frontend:
   - apiVersion: v2
     appVersion: 0.3.10
+    created: "2025-11-10T10:54:36.924314465Z"
+    description: A frontend Helm chart for Kubernetes
+    digest: a0ba37eb336449c4ea34c6e2bed69c76df07637a96d93f5b5724f34ad03bc550
+    name: frontend
+    type: application
+    urls:
+    - https://github.com/MTD-Labs/helm-charts/releases/download/frontend-3.6.32/frontend-3.6.32.tgz
+    version: 3.6.32
+  - apiVersion: v2
+    appVersion: 0.3.10
     created: "2025-11-10T10:04:46.932435649Z"
     description: A frontend Helm chart for Kubernetes
     digest: 6e4987a3f47c74bf0c8ad8b492b59b9c0e5ce80fd0b1009bd112c10a3729f1f9
@@ -34,4 +54,4 @@ entries:
     urls:
     - https://github.com/MTD-Labs/helm-charts/releases/download/frontend-3.6.31/frontend-3.6.31.tgz
     version: 3.6.31
-generated: "2025-11-10T10:04:46.932440588Z"
+generated: "2025-11-10T10:54:36.924325836Z"
